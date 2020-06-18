@@ -1,0 +1,265 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workflows_bloomsky_data_feed_name": {
+            "defaultValue": "bloomsky-data-feed",
+            "type": "String"
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflows_bloomsky_data_feed_name')]",
+            "location": "eastus",
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "CFG_BSKY-API-KEY": {
+                            "defaultValue": "",
+                            "type": "String"
+                        },
+                        "CFG_PWSWX-PASSWORD": {
+                            "defaultValue": "",
+                            "type": "String"
+                        },
+                        "CFG_PWSWX-STATIONID": {
+                            "defaultValue": "",
+                            "type": "String"
+                        },
+                        "CFG_PWSWX-SWTYPE": {
+                            "defaultValue": "azure_bloomsky_pws_int_1.0",
+                            "type": "String"
+                        }
+                    },
+                    "triggers": {
+                        "HTTP_-_Pull_Bloomsky_Data": {
+                            "recurrence": {
+                                "frequency": "Minute",
+                                "interval": 10
+                            },
+                            "type": "Http",
+                            "inputs": {
+                                "authentication": {
+                                    "type": "Raw",
+                                    "value": "\"@{parameters('CFG_BSKY-API-KEY')}\""
+                                },
+                                "method": "GET",
+                                "uri": "https://api.bloomsky.com/api/skydata/"
+                            }
+                        }
+                    },
+                    "actions": {
+                        "For_each_-_Bloomsky_Record": {
+                            "foreach": "@body('Parse_-_Bloomsky_JSON_Response')",
+                            "actions": {
+                                "Compose_-_PWS_Body": {
+                                    "runAfter": {},
+                                    "type": "Compose",
+                                    "inputs": "ID=@{parameters('CFG_PWSWX-STATIONID')}&PASSWORD=@{parameters('CFG_PWSWX-PASSWORD')}&dateutc=@{formatDateTime(addToTime('1970-01-01', int(item()?['Data']?['TS']), 'second'), 'yyyy-MM-dd HH:mm:ss')}&winddir=@{items('For_each_-_Bloomsky_Record')?['Storm']?['WindDirection']}&windspeedmph=@{items('For_each_-_Bloomsky_Record')?['Storm']?['SustainedWindSpeed']}&windgustmph=@{items('For_each_-_Bloomsky_Record')?['Storm']?['WindGust']}&windgustmph_10m=@{items('For_each_-_Bloomsky_Record')?['Storm']?['WindGust']}&tempf=@{items('For_each_-_Bloomsky_Record')?['Data']?['Temperature']}&rainin=@{items('For_each_-_Bloomsky_Record')?['Storm']?['RainRate']}&dailyrainin=@{items('For_each_-_Bloomsky_Record')?['Storm']?['RainDaily']}&baromin=@{items('For_each_-_Bloomsky_Record')?['Data']?['Pressure']}&humidity=@{items('For_each_-_Bloomsky_Record')?['Data']?['Humidity']}&\nUV=@{items('For_each_-_Bloomsky_Record')?['Storm']?['UVIndex']}&softwaretype=@{parameters('CFG_PWSWX-SWTYPE')}&action=updateraw"
+                                },
+                                "HTTP_-_Post_PWS_Data": {
+                                    "runAfter": {
+                                        "Compose_-_PWS_Body": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Http",
+                                    "inputs": {
+                                        "body": "@outputs('Compose_-_PWS_Body')",
+                                        "headers": {
+                                            "Content-Type": "application/x-www-form-urlencoded"
+                                        },
+                                        "method": "POST",
+                                        "uri": "https://www.pwsweather.com/pwsupdate/pwsupdate.php"
+                                    },
+                                    "description": "PWSWeather uses WU Protocol... see:  https://support.weather.com/s/article/PWS-Upload-Protocol?language=en_US"
+                                }
+                            },
+                            "runAfter": {
+                                "Parse_-_Bloomsky_JSON_Response": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Foreach"
+                        },
+                        "Parse_-_Bloomsky_JSON_Response": {
+                            "runAfter": {},
+                            "type": "ParseJson",
+                            "inputs": {
+                                "content": "@triggerBody()",
+                                "schema": {
+                                    "items": {
+                                        "properties": {
+                                            "ALT": {
+                                                "type": "integer"
+                                            },
+                                            "BoundedPoint": {
+                                                "type": "string"
+                                            },
+                                            "CityName": {
+                                                "type": "string"
+                                            },
+                                            "DST": {
+                                                "type": "integer"
+                                            },
+                                            "Data": {
+                                                "properties": {
+                                                    "DeviceType": {
+                                                        "type": "string"
+                                                    },
+                                                    "Humidity": {
+                                                        "type": "integer"
+                                                    },
+                                                    "ImageTS": {
+                                                        "type": "integer"
+                                                    },
+                                                    "ImageURL": {
+                                                        "type": "string"
+                                                    },
+                                                    "Luminance": {
+                                                        "type": "integer"
+                                                    },
+                                                    "Night": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "Pressure": {
+                                                        "type": "number"
+                                                    },
+                                                    "Rain": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "TS": {
+                                                        "type": "integer"
+                                                    },
+                                                    "Temperature": {
+                                                        "type": "number"
+                                                    },
+                                                    "UVIndex": {
+                                                        "type": "integer"
+                                                    },
+                                                    "Voltage": {
+                                                        "type": "integer"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            },
+                                            "DeviceID": {
+                                                "type": "string"
+                                            },
+                                            "DeviceName": {
+                                                "type": "string"
+                                            },
+                                            "FullAddress": {
+                                                "type": "string"
+                                            },
+                                            "LAT": {
+                                                "type": "number"
+                                            },
+                                            "LON": {
+                                                "type": "number"
+                                            },
+                                            "NumOfFollowers": {
+                                                "type": "integer"
+                                            },
+                                            "Point": {
+                                                "type": "object"
+                                            },
+                                            "PreviewImageList": {
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "type": "array"
+                                            },
+                                            "RegisterTime": {
+                                                "type": "integer"
+                                            },
+                                            "Searchable": {
+                                                "type": "boolean"
+                                            },
+                                            "Storm": {
+                                                "properties": {
+                                                    "24hRain": {
+                                                        "type": "number"
+                                                    },
+                                                    "RainDaily": {
+                                                        "type": "number"
+                                                    },
+                                                    "RainRate": {
+                                                        "type": "number"
+                                                    },
+                                                    "SustainedWindSpeed": {
+                                                        "type": "number"
+                                                    },
+                                                    "UVIndex": {
+                                                        "type": "string"
+                                                    },
+                                                    "WindDirection": {
+                                                        "type": "string"
+                                                    },
+                                                    "WindGust": {
+                                                        "type": "number"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            },
+                                            "StreetName": {
+                                                "type": "string"
+                                            },
+                                            "UTC": {
+                                                "type": "integer"
+                                            },
+                                            "VideoList": {
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "type": "array"
+                                            },
+                                            "VideoList_C": {
+                                                "items": {
+                                                    "type": "string"
+                                                },
+                                                "type": "array"
+                                            }
+                                        },
+                                        "required": [
+                                            "UTC",
+                                            "CityName",
+                                            "Storm",
+                                            "Searchable",
+                                            "DeviceName",
+                                            "RegisterTime",
+                                            "DST",
+                                            "BoundedPoint",
+                                            "LON",
+                                            "Point",
+                                            "VideoList",
+                                            "VideoList_C",
+                                            "DeviceID",
+                                            "NumOfFollowers",
+                                            "LAT",
+                                            "ALT",
+                                            "Data",
+                                            "FullAddress",
+                                            "StreetName",
+                                            "PreviewImageList"
+                                        ],
+                                        "type": "object"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {}
+            }
+        }
+    ]
+}
